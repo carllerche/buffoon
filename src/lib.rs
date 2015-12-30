@@ -1,11 +1,9 @@
-#[cfg(test)]
-extern crate hamcrest;
-
-use std::io;
 pub use message::{Message, LoadableMessage};
 pub use input_stream::{InputStream, Field};
 pub use output_stream::OutputStream;
 pub use serializer::Serializer;
+
+use std::io;
 
 mod message;
 mod input_stream;

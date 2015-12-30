@@ -223,7 +223,6 @@ fn eof() -> io::Error {
 #[cfg(test)]
 mod test {
     use std::io::Cursor;
-    use hamcrest::{assert_that,equal_to};
     use super::InputStream;
 
     #[test]
@@ -237,8 +236,8 @@ mod test {
         with_input_stream(b"\x0A\x04zomg", |i| {
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_that(f.get_tag(), equal_to(1));
-                assert_that(f.read_string().unwrap(), equal_to("zomg".to_string()));
+                assert_eq!(f.get_tag(), 1);
+                assert_eq!(f.read_string().unwrap(), "zomg");
             }
 
             assert!(i.read_field().unwrap().is_none());
@@ -250,8 +249,8 @@ mod test {
         with_input_stream(b"\x00\x08", |i| {
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_that(f.get_tag(), equal_to(0));
-                assert_that(f.read_u64().unwrap(), equal_to(8));
+                assert_eq!(f.get_tag(), 0);
+                assert_eq!(f.read_u64().unwrap(), 8);
             }
 
             assert!(i.read_field().unwrap().is_none());
@@ -263,8 +262,8 @@ mod test {
         with_input_stream(b"\x00\x92\x0C", |i| {
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_that(f.get_tag(), equal_to(0));
-                assert_that(f.read_u64().unwrap(), equal_to(1554));
+                assert_eq!(f.get_tag(), 0);
+                assert_eq!(f.read_u64().unwrap(), 1554);
             }
 
             assert!(i.read_field().unwrap().is_none());
@@ -276,20 +275,20 @@ mod test {
         with_input_stream(b"\x00\x08\x0A\x04zomg\x12\x03lol", |i| {
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_that(f.get_tag(), equal_to(0));
-                assert_that(f.read_u64().unwrap(), equal_to(8));
+                assert_eq!(f.get_tag(), 0);
+                assert_eq!(f.read_u64().unwrap(), 8);
             }
 
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_that(f.get_tag(), equal_to(1));
-                assert_that(f.read_string().unwrap(), equal_to("zomg".to_string()));
+                assert_eq!(f.get_tag(), 1);
+                assert_eq!(f.read_string().unwrap(), "zomg");
             }
 
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_that(f.get_tag(), equal_to(2));
-                assert_that(f.read_string().unwrap(), equal_to("lol".to_string()));
+                assert_eq!(f.get_tag(), 2);
+                assert_eq!(f.read_string().unwrap(), "lol");
             }
 
             assert!(i.read_field().unwrap().is_none());
@@ -303,8 +302,8 @@ mod test {
 
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_that(f.get_tag(), equal_to(1));
-                assert_that(f.read_string().unwrap(), equal_to("zomg".to_string()));
+                assert_eq!(f.get_tag(), 1);
+                assert_eq!(f.read_string().unwrap(), "zomg");
             }
 
             i.read_field().unwrap().unwrap().skip().unwrap();
@@ -318,8 +317,8 @@ mod test {
         with_input_stream(b"\x92\x01\x04zomg", |i| {
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_that(f.get_tag(), equal_to(18));
-                assert_that(f.read_string().unwrap(), equal_to("zomg".to_string()));
+                assert_eq!(f.get_tag(), 18);
+                assert_eq!(f.read_string().unwrap(), "zomg");
             }
 
             assert!(i.read_field().unwrap().is_none());

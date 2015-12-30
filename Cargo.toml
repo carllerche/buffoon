@@ -14,7 +14,3 @@ authors = [
   "Carl Lerche<me@carllerche.com>",
   "tim@spork.in"
 ]
-
-[dev-dependencies.hamcrest]
-
-git = "https://github.com/carllerche/hamcrest-rust"
