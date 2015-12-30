@@ -14,15 +14,9 @@ mod output_writer;
 mod serializer;
 mod wire_type;
 
-/*
-    - TODO: This was broken by a Rust regression:
-        https://github.com/rust-lang/rust/issues/18209
-        https://github.com/rust-lang/rust/pull/18235
-
-pub fn load<'a, M: LoadableMessage, R: Reader>(reader: &mut R) -> IoResult<M> {
+pub fn load<'a, M: LoadableMessage, R: io::Read>(reader: &mut R) -> io::Result<M> {
     LoadableMessage::load(reader)
 }
-*/
 
 pub fn serializer_for<M: Message>(msg: &M) -> io::Result<Serializer> {
     let mut serializer = Serializer::new();
