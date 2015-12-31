@@ -26,7 +26,7 @@ impl<'a, W: Write> OutputStreamImpl for OutputWriter<'a, W> {
 }
 
 impl<'a, W: Write> OutputStream for OutputWriter<'a, W> {
-    fn write_message_field<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()> {
+    fn write_message<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()> {
         if self.curr >= self.nested.len() {
             return invalid_serializer();
         }
@@ -44,11 +44,11 @@ impl<'a, W: Write> OutputStream for OutputWriter<'a, W> {
         Ok(())
     }
 
-    fn write_varint_field<F: NumField>(&mut self, field: usize, val: F) -> io::Result<()> {
-        val.write_varint_field(field, self)
+    fn write_varint<F: NumField>(&mut self, field: usize, val: F) -> io::Result<()> {
+        val.write_varint(field, self)
     }
 
-    fn write_byte_field(&mut self, field: usize, val: &[u8]) -> io::Result<()> {
+    fn write_byte(&mut self, field: usize, val: &[u8]) -> io::Result<()> {
         try!(self.write_head(field, WireType::LengthDelimited));
         try!(self.write_usize(val.len()));
         try!(self.write_raw_bytes(val));

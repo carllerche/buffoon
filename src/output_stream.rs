@@ -4,48 +4,51 @@ use std::borrow::Borrow;
 
 pub trait OutputStream {
     /// Writes a nested message with the specified field number
-    fn write_message_field<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()>;
+    fn write_message<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()>;
 
     /// Writes a field as bytes
-    fn write_byte_field(&mut self, field: usize, val: &[u8]) -> io::Result<()>;
+    fn write_byte(&mut self, field: usize, val: &[u8]) -> io::Result<()>;
 
     /// Write a field as a varint
-    fn write_varint_field<T: NumField>(&mut self, field: usize, val: T) -> io::Result<()>;
+    fn write_varint<T: NumField>(&mut self, field: usize, val: T) -> io::Result<()>;
 
     /// Write a repeated message field
-    fn write_repeated_message_field<T, I>(&mut self, field: usize, msgs: I) -> io::Result<()>
+    fn write_repeated_message<T, I>(&mut self, field: usize, msgs: I) -> io::Result<()>
             where T: Serialize,
                   I: IntoIterator<Item=T> {
         for msg in msgs {
-            try!(self.write_message_field(field, &msg));
+            try!(self.write_message(field, &msg));
         }
 
         Ok(())
     }
 
-    fn write_repeated_byte_field<'a, I: Iterator<Item=&'a [u8]>>(&mut self, field: usize, vals: I) -> io::Result<()> {
+    /// Write each value yielded by iterator as a byte field
+    fn write_repeated_byte<'a, I>(&mut self, field: usize, vals: I) -> io::Result<()>
+            where I: Iterator<Item=&'a [u8]> {
+
         for val in vals {
-            try!(self.write_byte_field(field, val));
+            try!(self.write_byte(field, val));
         }
 
         Ok(())
     }
 
-    fn write_str_field(&mut self, field: usize, val: &str) -> io::Result<()> {
-        self.write_byte_field(field, val.as_bytes())
+    fn write_str(&mut self, field: usize, val: &str) -> io::Result<()> {
+        self.write_byte(field, val.as_bytes())
     }
 
-    fn write_opt_str_field<S: Borrow<str>>(&mut self, field: usize, val: Option<S>) -> io::Result<()> {
+    fn write_opt_str<S: Borrow<str>>(&mut self, field: usize, val: Option<S>) -> io::Result<()> {
         match val {
-            Some(s) => try!(self.write_str_field(field, s.borrow())),
+            Some(s) => try!(self.write_str(field, s.borrow())),
             None => {}
         }
 
         Ok(())
     }
 
-    fn write_repeated_str_field<'a, I: Iterator<Item=&'a str>>(&mut self, field: usize, vals: I) -> io::Result<()> {
-        self.write_repeated_byte_field(field, vals.map(|s| s.as_bytes()))
+    fn write_repeated_str<'a, I: Iterator<Item=&'a str>>(&mut self, field: usize, vals: I) -> io::Result<()> {
+        self.write_repeated_byte(field, vals.map(|s| s.as_bytes()))
     }
 }
 
@@ -89,11 +92,11 @@ pub trait OutputStreamImpl {
 }
 
 pub trait NumField {
-    fn write_varint_field<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()>;
+    fn write_varint<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()>;
 }
 
 impl NumField for usize {
-    fn write_varint_field<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()> {
+    fn write_varint<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()> {
         try!(out.write_head(field, WireType::Varint));
         try!(out.write_usize(self));
         Ok(())
@@ -101,7 +104,7 @@ impl NumField for usize {
 }
 
 impl NumField for u64 {
-    fn write_varint_field<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()> {
+    fn write_varint<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()> {
         try!(out.write_head(field, WireType::Varint));
         try!(out.write_unsigned_varint(self));
         Ok(())
@@ -109,9 +112,9 @@ impl NumField for u64 {
 }
 
 impl<F: NumField> NumField for Option<F> {
-    fn write_varint_field<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()> {
+    fn write_varint<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()> {
         match self {
-            Some(v) => v.write_varint_field(field, out),
+            Some(v) => v.write_varint(field, out),
             None => Ok(())
         }
     }

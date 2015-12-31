@@ -48,7 +48,7 @@ impl OutputStreamImpl for Serializer {
 }
 
 impl OutputStream for Serializer {
-    fn write_message_field<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()> {
+    fn write_message<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()> {
         let position = self.nested.len();
         let prev_count = self.size;
 
@@ -69,14 +69,14 @@ impl OutputStream for Serializer {
         Ok(())
     }
 
-    fn write_byte_field(&mut self, field: usize, val: &[u8]) -> io::Result<()> {
+    fn write_byte(&mut self, field: usize, val: &[u8]) -> io::Result<()> {
         try!(self.write_head(field, WireType::LengthDelimited));
         try!(self.write_usize(val.len()));
         try!(self.write_raw_bytes(val));
         Ok(())
     }
 
-    fn write_varint_field<F: NumField>(&mut self, field: usize, val: F) -> io::Result<()> {
-        val.write_varint_field(field, self)
+    fn write_varint<F: NumField>(&mut self, field: usize, val: F) -> io::Result<()> {
+        val.write_varint(field, self)
     }
 }
