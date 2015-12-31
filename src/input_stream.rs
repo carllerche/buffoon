@@ -1,3 +1,4 @@
+use {LoadableMessage};
 use std::{fmt, usize};
 use std::io::{self, Read};
 use wire_type::WireType;
@@ -120,6 +121,16 @@ impl<'a, R: Read> InputStream<'a, R> {
         Ok(ret)
     }
 
+    fn read_message<M: LoadableMessage>(&mut self) -> io::Result<Option<M>> {
+        if let Some(len) = try!(self.read_u64()) {
+            let mut reader = self.reader.take(len);
+            let mut input = InputStream::new(&mut reader);
+            return LoadableMessage::load_from_stream(&mut input).map(Some);
+        }
+
+        Ok(None)
+    }
+
     #[inline]
     fn read_byte(&mut self) -> io::Result<Option<u8>> {
         let mut buf = [0; 1];
@@ -198,6 +209,19 @@ impl<'a, 'b, R: Read> Field<'a, 'b, R> {
                 Err(eof())
             }
             _ => Err(unexpected_output("field type was not length delimited"))
+        }
+    }
+
+    pub fn read_message<M: LoadableMessage>(&mut self) -> io::Result<M> {
+        match self.wire_type {
+            LengthDelimited => {
+                if let Some(val) = try!(self.input.read_message()) {
+                    return Ok(val);
+                }
+
+                Err(eof())
+            }
+            _ => Err(unexpected_output("field type was not length delimited")),
         }
     }
 }

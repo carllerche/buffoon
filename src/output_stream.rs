@@ -8,9 +8,9 @@ pub trait OutputStream : OutputStreamBackend {
     /// Writes a nested message with the specified field number
     fn write_message_field<M: Message>(&mut self, field: usize, msg: &M) -> io::Result<()>;
 
-    fn write_repeated_message_field<'a, M:'a + Message, I: Iterator<Item=&'a M>>(&mut self, field: usize, msgs: I) -> io::Result<()> {
+    fn write_repeated_message_field<'a, M:'a + Message, I: IntoIterator<Item=M>>(&mut self, field: usize, msgs: I) -> io::Result<()> {
         for msg in msgs {
-            try!(self.write_message_field(field, msg));
+            try!(self.write_message_field(field, &msg));
         }
 
         Ok(())
