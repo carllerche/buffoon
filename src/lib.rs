@@ -10,11 +10,16 @@ mod output_writer;
 mod serializer;
 mod wire_type;
 
-pub fn load<'a, M: LoadableMessage, R: io::Read>(reader: &mut R) -> io::Result<M> {
-    LoadableMessage::load(reader)
+/// Deserialize an encoded Protocol Buffers message.
+pub fn deserialize<T, R, I>(input: I) -> io::Result<T>
+        where T: Deserialize,
+              R: io::Read,
+              I: Into<InputStream<R>> {
+    let mut input = input.into();
+    T::deserialize(&mut input)
 }
 
-pub fn serializer_for<M: Message>(msg: &M) -> io::Result<Serializer> {
+pub fn serializer_for<T: Serialize>(msg: &T) -> io::Result<Serializer> {
     let mut serializer = Serializer::new();
 
     // populate the message size info
@@ -23,43 +28,37 @@ pub fn serializer_for<M: Message>(msg: &M) -> io::Result<Serializer> {
     Ok(serializer)
 }
 
-pub fn serialize<M: Message>(msg: &M) -> io::Result<Vec<u8>> {
-    use std::iter::repeat;
-
+pub fn serialize<T: Serialize>(msg: &T) -> io::Result<Vec<u8>> {
     let serializer = try!(serializer_for(msg));
-    let mut bytes: Vec<u8> = repeat(0).take(serializer.size()).collect();
+    let mut bytes = vec![0u8; serializer.size()];
 
     try!(serializer.serialize_into(msg, &mut bytes));
     Ok(bytes)
 }
 
-pub trait Message {
-    fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()>;
+pub trait Serialize {
+    fn serialize<O>(&self, out: &mut O) -> io::Result<()> where O: OutputStream;
 }
 
-impl<'a, M: 'a + Message> Message for &'a M {
+impl<'a, T: 'a + Serialize> Serialize for &'a T {
     fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
         (*self).serialize(out)
     }
 }
 
-pub trait LoadableMessage : Sized {
-    fn load_from_stream<'a, R:'a+Read>(reader: &mut InputStream<'a, R>) -> io::Result<Self>;
-
-    fn load<R: Read>(reader: &mut R) -> io::Result<Self> {
-        let mut stream = InputStream::new(reader);
-        LoadableMessage::load_from_stream(&mut stream)
-    }
+pub trait Deserialize {
+    fn deserialize<R: Read>(reader: &mut InputStream<R>) -> io::Result<Self>
+            where Self: Sized;
 }
 
 #[cfg(test)]
 mod test {
     use std::io;
-    use super::{Message, OutputStream, serialize};
+    use super::{Serialize, OutputStream, serialize};
 
     struct Empty;
 
-    impl Message for Empty {
+    impl Serialize for Empty {
         fn serialize<O: OutputStream>(&self, _: &mut O) -> io::Result<()> {
             Ok(())
         }
@@ -73,7 +72,7 @@ mod test {
 
     struct Simple;
 
-    impl Message for Simple {
+    impl Serialize for Simple {
         fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
             try!(out.write_str_field(1, "hello"));
             // try!(output.write_varint_field(2, self.config()));

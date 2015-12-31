@@ -1,19 +1,15 @@
-use {LoadableMessage};
+use {Deserialize};
 use std::{fmt, usize};
 use std::io::{self, Read};
 use wire_type::WireType;
 use wire_type::WireType::*;
 
-pub struct InputStream<'a, R: 'a> {
-    reader: &'a mut R
+pub struct InputStream<R> {
+    reader: R
 }
 
-impl<'a, R: Read> InputStream<'a, R> {
-    pub fn new(reader: &'a mut R) -> InputStream<'a, R> {
-        InputStream { reader: reader }
-    }
-
-    pub fn read_field<'b>(&'b mut self) -> io::Result<Option<Field<'b, 'a, R>>> {
+impl<R: Read> InputStream<R> {
+    pub fn read_field(&mut self) -> io::Result<Option<Field<R>>> {
         // Read the header byte. In this case, EOF errors are OK as they signify
         // that there is no field to read
         let head = match self.read_usize() {
@@ -35,6 +31,7 @@ impl<'a, R: Read> InputStream<'a, R> {
         }))
     }
 
+    /// Returns Option to handle attempting to read a field ID when EOF
     fn read_usize(&mut self) -> io::Result<Option<usize>> {
         if let Some(num) = try!(self.read_unsigned_varint()) {
             if num > (usize::MAX as u64) {
@@ -121,11 +118,10 @@ impl<'a, R: Read> InputStream<'a, R> {
         Ok(ret)
     }
 
-    fn read_message<M: LoadableMessage>(&mut self) -> io::Result<Option<M>> {
+    fn read_message<T: Deserialize>(&mut self) -> io::Result<Option<T>> {
         if let Some(len) = try!(self.read_u64()) {
-            let mut reader = self.reader.take(len);
-            let mut input = InputStream::new(&mut reader);
-            return LoadableMessage::load_from_stream(&mut input).map(Some);
+            let mut input = (&mut self.reader).take(len).into();
+            return T::deserialize(&mut input).map(Some);
         }
 
         Ok(None)
@@ -143,13 +139,19 @@ impl<'a, R: Read> InputStream<'a, R> {
     }
 }
 
-pub struct Field<'b, 'a:'b, R:'a> {
-    input: &'b mut InputStream<'a, R>,
+impl<R: Read> From<R> for InputStream<R> {
+    fn from(reader: R) -> InputStream<R> {
+        InputStream { reader: reader }
+    }
+}
+
+pub struct Field<'a, R: 'a> {
+    input: &'a mut InputStream<R>,
     pub tag: usize,
     wire_type: WireType
 }
 
-impl<'a, 'b, R: Read> Field<'a, 'b, R> {
+impl<'a, R: Read> Field<'a, R> {
     pub fn get_tag(&self) -> usize {
         self.tag
     }
@@ -212,7 +214,7 @@ impl<'a, 'b, R: Read> Field<'a, 'b, R> {
         }
     }
 
-    pub fn read_message<M: LoadableMessage>(&mut self) -> io::Result<M> {
+    pub fn read_message<T: Deserialize>(&mut self) -> io::Result<T> {
         match self.wire_type {
             LengthDelimited => {
                 if let Some(val) = try!(self.input.read_message()) {
@@ -226,7 +228,7 @@ impl<'a, 'b, R: Read> Field<'a, 'b, R> {
     }
 }
 
-impl<'a, 'b, R> fmt::Debug for Field<'a, 'b, R> {
+impl<'a, R> fmt::Debug for Field<'a, R> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "Field(tag={:?}; wire-type={:?})", self.tag, self.wire_type)
     }
@@ -372,9 +374,7 @@ mod test {
     }
 
     fn with_input_stream<F: FnOnce(&mut InputStream<Cursor<&[u8]>>)>(bytes: &[u8], action: F) {
-        let mut reader = Cursor::new(bytes);
-        let mut stream = InputStream::new(&mut reader);
-
-        action(&mut stream)
+        let mut input = Cursor::new(bytes).into();
+        action(&mut input)
     }
 }

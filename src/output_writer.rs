@@ -1,7 +1,7 @@
-use std::io::{self, Write};
+use {Serialize, OutputStream};
 use output_stream::OutputStreamBackend;
 use wire_type::WireType::*;
-use {Message, OutputStream};
+use std::io::{self, Write};
 
 pub struct OutputWriter<'a, W:'a> {
     curr: usize,
@@ -27,7 +27,7 @@ impl<'a, W: Write> OutputStreamBackend for OutputWriter<'a, W> {
 }
 
 impl<'a, W: Write> OutputStream for OutputWriter<'a, W> {
-    fn write_message_field<M: Message>(&mut self, field: usize, msg: &M) -> io::Result<()> {
+    fn write_message_field<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()> {
         if self.curr >= self.nested.len() {
             return invalid_serializer();
         }

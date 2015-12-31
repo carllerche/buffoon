@@ -1,14 +1,14 @@
-use std::io;
-use std::borrow::Borrow;
+use {Serialize};
 use wire_type::WireType;
 use wire_type::WireType::*;
-use {Message};
+use std::io;
+use std::borrow::Borrow;
 
 pub trait OutputStream : OutputStreamBackend {
     /// Writes a nested message with the specified field number
-    fn write_message_field<M: Message>(&mut self, field: usize, msg: &M) -> io::Result<()>;
+    fn write_message_field<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()>;
 
-    fn write_repeated_message_field<'a, M:'a + Message, I: IntoIterator<Item=M>>(&mut self, field: usize, msgs: I) -> io::Result<()> {
+    fn write_repeated_message_field<'a, T: 'a + Serialize, I: IntoIterator<Item=T>>(&mut self, field: usize, msgs: I) -> io::Result<()> {
         for msg in msgs {
             try!(self.write_message_field(field, &msg));
         }

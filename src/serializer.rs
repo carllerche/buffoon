@@ -1,8 +1,8 @@
-use std::io::{self, Write};
-use {Message, OutputStream};
+use {Serialize, OutputStream};
 use output_stream::OutputStreamBackend;
 use output_writer::OutputWriter;
 use wire_type::WireType::*;
+use std::io;
 
 pub struct Serializer {
     size: usize,
@@ -21,7 +21,7 @@ impl Serializer {
         self.size
     }
 
-    pub fn serialize<M: Message, W: Write>(&self, msg: &M, writer: &mut W) -> io::Result<()> {
+    pub fn serialize<T: Serialize, W: io::Write>(&self, msg: &T, writer: &mut W) -> io::Result<()> {
         let mut out = OutputWriter::new(&self.nested, writer);
 
         try!(msg.serialize(&mut out));
@@ -29,7 +29,7 @@ impl Serializer {
         Ok(())
     }
 
-    pub fn serialize_into<M: Message>(&self, msg: &M, dst: &mut [u8]) -> io::Result<()> {
+    pub fn serialize_into<T: Serialize>(&self, msg: &T, dst: &mut [u8]) -> io::Result<()> {
         if self.size > dst.len() {
             return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -55,7 +55,7 @@ impl OutputStreamBackend for Serializer {
 }
 
 impl OutputStream for Serializer {
-    fn write_message_field<M: Message>(&mut self, field: usize, msg: &M) -> io::Result<()> {
+    fn write_message_field<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()> {
         let position = self.nested.len();
         let prev_count = self.size;
 
