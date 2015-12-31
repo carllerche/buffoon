@@ -56,36 +56,53 @@ mod test {
     use std::io;
     use super::{Serialize, OutputStream, serialize};
 
-    struct Empty;
-
-    impl Serialize for Empty {
-        fn serialize<O: OutputStream>(&self, _: &mut O) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
     #[test]
     pub fn test_writing_unit_struct() {
+        struct Empty;
+
+        impl Serialize for Empty {
+            fn serialize<O: OutputStream>(&self, _: &mut O) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
         let bytes = serialize(&Empty).unwrap();
         assert!(bytes.is_empty());
     }
 
-    struct Simple;
-
-    impl Serialize for Simple {
-        fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
-            try!(out.write_string(1, "hello"));
-            // try!(output.write_varint(2, self.config()));
-            // try!(output.write_repeated_string(3, self.cmd().iter().map(|s| s.as_slice())));
-
-            Ok(())
-        }
-    }
-
     #[test]
     pub fn test_writing_simple_message() {
+        struct Simple;
+
+        impl Serialize for Simple {
+            fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
+                try!(out.write_string(1, "hello"));
+                // try!(output.write_varint(2, self.config()));
+                // try!(output.write_repeated_string(3, self.cmd().iter().map(|s| s.as_slice())));
+
+                Ok(())
+            }
+        }
+
         let bytes = serialize(&Simple).unwrap();
         let expect = b"\x0A\x05hello";
         assert!(bytes == expect, "expect={:?}; actual={:?}", expect, bytes);
+    }
+
+    #[test]
+    pub fn test_serializing_packed_varints() {
+        struct Simple;
+
+        impl Serialize for Simple {
+            fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
+                try!(out.write_packed_varint(4, [3u64, 270, 86942].iter().map(|num| *num)));
+                Ok(())
+            }
+        }
+
+        let bytes = serialize(&Simple).unwrap();
+        let expect = b"\x22\x06\x03\x8e\x02\x9e\xa7\x05";
+
+        assert_eq!(bytes, expect);
     }
 }

@@ -3,6 +3,12 @@ use wire_type::WireType;
 use std::{fmt, usize};
 use std::io::{self, Read};
 
+/*
+ *
+ * ===== InputStream =====
+ *
+ */
+
 /// `InputStream` allows reading Protocol Buffers encoded data off of a stream.
 pub struct InputStream<R> {
     reader: R
@@ -160,6 +166,12 @@ impl<R: Read> From<R> for InputStream<R> {
     }
 }
 
+/*
+ *
+ * ===== Field =====
+ *
+ */
+
 pub struct Field<'a, R: 'a> {
     input: &'a mut InputStream<R>,
     pub tag: usize,
@@ -247,6 +259,18 @@ impl<'a, R: Read> Field<'a, R> {
             _ => Err(unexpected_output("field type was not length delimited")),
         }
     }
+
+    pub fn read_packed_varints(&mut self) -> io::Result<VarInts<R>> {
+        match self.wire_type {
+            WireType::LengthDelimited => {
+                let len = try!(self.input.read_u64()).unwrap_or(0);
+                let input = (&mut self.input.reader).take(len).into();
+                Ok(VarInts { input: input })
+
+            }
+            _ => Err(unexpected_output("field type was not length delimited")),
+        }
+    }
 }
 
 impl<'a, R> fmt::Debug for Field<'a, R> {
@@ -254,6 +278,34 @@ impl<'a, R> fmt::Debug for Field<'a, R> {
         write!(fmt, "Field(tag={:?}; wire-type={:?})", self.tag, self.wire_type)
     }
 }
+
+/*
+ *
+ * ===== VarInts =====
+ *
+ */
+
+pub struct VarInts<'a, R: 'a> {
+    input: InputStream<io::Take<&'a mut R>>,
+}
+
+impl<'a, R: 'a + io::Read> Iterator for VarInts<'a, R> {
+    type Item = io::Result<u64>;
+
+    fn next(&mut self) -> Option<io::Result<u64>> {
+        match self.input.read_unsigned_varint() {
+            Ok(Some(v)) => Some(Ok(v)),
+            Ok(None) => None,
+            Err(e) => Some(Err(e)),
+        }
+    }
+}
+
+/*
+ *
+ * ===== Misc =====
+ *
+ */
 
 fn has_msb(byte: u8) -> bool {
     byte & 0x80 != 0
@@ -392,6 +444,17 @@ mod test {
                 assert!(f.read_u64().is_err());
             }
         });
+    }
+
+    #[test]
+    pub fn test_reading_packed_varints() {
+        with_input_stream(b"\x22\x06\x03\x8e\x02\x9e\xa7\x05", |i| {
+            let mut f = i.read_field().unwrap().unwrap();
+            assert_eq!(f.tag(), 4);
+
+            let nums: Vec<u64> = f.read_packed_varints().unwrap().map(Result::unwrap).collect();
+            assert_eq!(nums, [3, 270, 86942]);
+        })
     }
 
     fn with_input_stream<F: FnOnce(&mut InputStream<Cursor<&[u8]>>)>(bytes: &[u8], action: F) {

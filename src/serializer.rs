@@ -38,25 +38,16 @@ impl Serializer {
 
         self.serialize(msg, &mut io::BufWriter::new(dst))
     }
-}
 
-impl OutputStreamImpl for Serializer {
-    fn write_raw_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
-        // TODO: Handle overflow
-        self.size += bytes.len();
-        Ok(())
-    }
-}
-
-impl OutputStream for Serializer {
-    fn write_message<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()> {
+    fn write_nested<F>(&mut self, field: usize, f: F) -> io::Result<()>
+            where F: FnOnce(&mut Serializer) -> io::Result<()> {
         let position = self.nested.len();
         let prev_count = self.size;
 
         // Add 0 as a placeholder for the current message
         self.nested.push(0);
 
-        try!(msg.serialize(self));
+        try!(f(self));
 
         let nested_size = self.size - prev_count;
 
@@ -69,8 +60,50 @@ impl OutputStream for Serializer {
 
         Ok(())
     }
+}
 
-    fn write_byte(&mut self, field: usize, val: &[u8]) -> io::Result<()> {
+impl OutputStreamImpl for Serializer {
+    fn write_raw_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
+        // TODO: Handle overflow
+        self.size += bytes.len();
+        Ok(())
+    }
+
+    fn write_unsigned_varint(&mut self, mut val: u64) -> io::Result<()> {
+        // Handle a common case
+        if val & (!0 << 7) == 0 {
+            self.size += 1;
+            return Ok(());
+        }
+
+        let mut n = 2;
+
+        if val & (!0 << 35) != 0 {
+            n += 4;
+            val >>= 28;
+        }
+
+        if val & (!0 << 21) != 0 {
+            n += 2;
+            val >> 14;
+        }
+
+        if val & (!0 << 14) != 0 {
+            n += 1;
+        }
+
+        self.size += n;
+
+        Ok(())
+    }
+}
+
+impl OutputStream for Serializer {
+    fn write_message<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()> {
+        self.write_nested(field, |me| msg.serialize(me))
+    }
+
+    fn write_bytes(&mut self, field: usize, val: &[u8]) -> io::Result<()> {
         try!(self.write_head(field, WireType::LengthDelimited));
         try!(self.write_usize(val.len()));
         try!(self.write_raw_bytes(val));
@@ -81,5 +114,19 @@ impl OutputStream for Serializer {
         try!(self.write_head(field, WireType::Varint));
         try!(self.write_unsigned_varint(val.into()));
         Ok(())
+    }
+
+    fn write_packed_varint<T: Into<u64>, I>(&mut self, field: usize, vals: I) -> io::Result<()>
+            where T: Into<u64>,
+                  I: IntoIterator<Item=T> {
+
+        // Compute the nested size of the packed field
+        self.write_nested(field, |me| {
+            for val in vals {
+                try!(me.write_unsigned_varint(val.into()));
+            }
+
+            Ok(())
+        })
     }
 }
