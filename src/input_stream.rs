@@ -4,11 +4,14 @@ use std::io::{self, Read};
 use wire_type::WireType;
 use wire_type::WireType::*;
 
+/// `InputStream` allows reading Protocol Buffers encoded data off of a stream.
 pub struct InputStream<R> {
     reader: R
 }
 
 impl<R: Read> InputStream<R> {
+    /// Reads the a field header and returns a `Field` which allows reading the
+    /// field data.
     pub fn read_field(&mut self) -> io::Result<Option<Field<R>>> {
         // Read the header byte. In this case, EOF errors are OK as they signify
         // that there is no field to read
@@ -31,7 +34,9 @@ impl<R: Read> InputStream<R> {
         }))
     }
 
-    /// Returns Option to handle attempting to read a field ID when EOF
+    /// Reads an unsigned varint as `usize`.
+    ///
+    /// If at EOF before reading the first byte, returns Ok(None).
     fn read_usize(&mut self) -> io::Result<Option<usize>> {
         if let Some(num) = try!(self.read_unsigned_varint()) {
             if num > (usize::MAX as u64) {
@@ -44,11 +49,16 @@ impl<R: Read> InputStream<R> {
         Ok(None)
     }
 
+    /// Read an unsigned varint as `u64`.
+    ///
+    /// If at EOF before reading the first byte, returns Ok(None).
     fn read_u64(&mut self) -> io::Result<Option<u64>> {
         self.read_unsigned_varint()
     }
 
-    // TODO: Handle overflow
+    /// Read an unsigned varint as `u64`.
+    ///
+    /// If at EOF before reading the first byte, returns Ok(None).
     fn read_unsigned_varint(&mut self) -> io::Result<Option<u64>> {
         let mut ret: u64 = 0;
         let mut shift = 0;
@@ -70,6 +80,7 @@ impl<R: Read> InputStream<R> {
         }
     }
 
+    /// Reads a length delimited field and returns the data as `Vec<u8>`
     fn read_length_delimited(&mut self) -> io::Result<Option<Vec<u8>>> {
         if let Some(len) = try!(self.read_usize()) {
             return self.read_exact(len).map(|ret| Some(ret));
@@ -78,10 +89,13 @@ impl<R: Read> InputStream<R> {
         Ok(None)
     }
 
+    /// Skips the current field
     fn skip(&mut self, n: usize) -> io::Result<usize> {
         let mut i = 0;
         // Yes this is a terrible implementation, but something better depends on:
         // https://github.com/rust-lang/rust/issues/13989
+        //
+        // TODO: Consider using a &mut [u8]
         while i < n {
             if let None = try!(self.read_byte()) {
                 return Ok(i);
@@ -93,6 +107,7 @@ impl<R: Read> InputStream<R> {
         Ok(i)
     }
 
+    /// Read exactly `len` bytes and return the data read as `Vec<u8>`
     fn read_exact(&mut self, len: usize) -> io::Result<Vec<u8>> {
         use std::slice;
 
@@ -118,6 +133,7 @@ impl<R: Read> InputStream<R> {
         Ok(ret)
     }
 
+    /// Reads and deserializes a nested message.
     fn read_message<T: Deserialize>(&mut self) -> io::Result<Option<T>> {
         if let Some(len) = try!(self.read_u64()) {
             let mut input = (&mut self.reader).take(len).into();
@@ -152,10 +168,12 @@ pub struct Field<'a, R: 'a> {
 }
 
 impl<'a, R: Read> Field<'a, R> {
-    pub fn get_tag(&self) -> usize {
+    /// Get the field tag
+    pub fn tag(&self) -> usize {
         self.tag
     }
 
+    /// Skip the current field
     pub fn skip(&mut self) -> io::Result<()> {
         match self.wire_type {
             Varint => {
@@ -181,6 +199,7 @@ impl<'a, R: Read> Field<'a, R> {
         }
     }
 
+    /// Read the field value as `u64`
     pub fn read_u64(&mut self) -> io::Result<u64> {
         match self.wire_type {
             Varint => {
@@ -194,6 +213,7 @@ impl<'a, R: Read> Field<'a, R> {
         }
     }
 
+    /// Read the field value as `String`
     pub fn read_string(&mut self) -> io::Result<String> {
         match String::from_utf8(try!(self.read_bytes())) {
             Ok(s) => Ok(s),
@@ -201,6 +221,7 @@ impl<'a, R: Read> Field<'a, R> {
         }
     }
 
+    /// Read the field value as `Vec<u8>`
     pub fn read_bytes(&mut self) -> io::Result<Vec<u8>> {
         match self.wire_type {
             LengthDelimited => {
@@ -214,6 +235,7 @@ impl<'a, R: Read> Field<'a, R> {
         }
     }
 
+    /// Read the field value as `T`
     pub fn read_message<T: Deserialize>(&mut self) -> io::Result<T> {
         match self.wire_type {
             LengthDelimited => {
@@ -262,7 +284,7 @@ mod test {
         with_input_stream(b"\x0A\x04zomg", |i| {
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_eq!(f.get_tag(), 1);
+                assert_eq!(f.tag(), 1);
                 assert_eq!(f.read_string().unwrap(), "zomg");
             }
 
@@ -275,7 +297,7 @@ mod test {
         with_input_stream(b"\x00\x08", |i| {
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_eq!(f.get_tag(), 0);
+                assert_eq!(f.tag(), 0);
                 assert_eq!(f.read_u64().unwrap(), 8);
             }
 
@@ -288,7 +310,7 @@ mod test {
         with_input_stream(b"\x00\x92\x0C", |i| {
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_eq!(f.get_tag(), 0);
+                assert_eq!(f.tag(), 0);
                 assert_eq!(f.read_u64().unwrap(), 1554);
             }
 
@@ -301,19 +323,19 @@ mod test {
         with_input_stream(b"\x00\x08\x0A\x04zomg\x12\x03lol", |i| {
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_eq!(f.get_tag(), 0);
+                assert_eq!(f.tag(), 0);
                 assert_eq!(f.read_u64().unwrap(), 8);
             }
 
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_eq!(f.get_tag(), 1);
+                assert_eq!(f.tag(), 1);
                 assert_eq!(f.read_string().unwrap(), "zomg");
             }
 
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_eq!(f.get_tag(), 2);
+                assert_eq!(f.tag(), 2);
                 assert_eq!(f.read_string().unwrap(), "lol");
             }
 
@@ -328,7 +350,7 @@ mod test {
 
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_eq!(f.get_tag(), 1);
+                assert_eq!(f.tag(), 1);
                 assert_eq!(f.read_string().unwrap(), "zomg");
             }
 
@@ -343,7 +365,7 @@ mod test {
         with_input_stream(b"\x92\x01\x04zomg", |i| {
             {
                 let mut f = i.read_field().unwrap().unwrap();
-                assert_eq!(f.get_tag(), 18);
+                assert_eq!(f.tag(), 18);
                 assert_eq!(f.read_string().unwrap(), "zomg");
             }
 
