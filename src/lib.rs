@@ -1,11 +1,9 @@
-pub use message::{Message, LoadableMessage};
 pub use input_stream::{InputStream, Field};
 pub use output_stream::OutputStream;
 pub use serializer::Serializer;
 
-use std::io;
+use std::io::{self, Read};
 
-mod message;
 mod input_stream;
 mod output_stream;
 mod output_writer;
@@ -33,6 +31,25 @@ pub fn serialize<M: Message>(msg: &M) -> io::Result<Vec<u8>> {
 
     try!(serializer.serialize_into(msg, &mut bytes));
     Ok(bytes)
+}
+
+pub trait Message {
+    fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()>;
+}
+
+impl<'a, M: 'a + Message> Message for &'a M {
+    fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
+        (*self).serialize(out)
+    }
+}
+
+pub trait LoadableMessage : Sized {
+    fn load_from_stream<'a, R:'a+Read>(reader: &mut InputStream<'a, R>) -> io::Result<Self>;
+
+    fn load<R: Read>(reader: &mut R) -> io::Result<Self> {
+        let mut stream = InputStream::new(reader);
+        LoadableMessage::load_from_stream(&mut stream)
+    }
 }
 
 #[cfg(test)]
