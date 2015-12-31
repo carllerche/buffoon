@@ -99,9 +99,9 @@ mod test {
 
     impl Serialize for Simple {
         fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
-            try!(out.write_str(1, "hello"));
+            try!(out.write_string(1, "hello"));
             // try!(output.write_varint(2, self.config()));
-            // try!(output.write_repeated_str(3, self.cmd().iter().map(|s| s.as_slice())));
+            // try!(output.write_repeated_string(3, self.cmd().iter().map(|s| s.as_slice())));
 
             Ok(())
         }

@@ -10,7 +10,7 @@ pub trait OutputStream {
     fn write_byte(&mut self, field: usize, val: &[u8]) -> io::Result<()>;
 
     /// Write a field as a varint
-    fn write_varint<T: NumField>(&mut self, field: usize, val: T) -> io::Result<()>;
+    fn write_varint<T: Into<u64>>(&mut self, field: usize, val: T) -> io::Result<()>;
 
     /// Write a repeated message field
     fn write_repeated_message<T, I>(&mut self, field: usize, msgs: I) -> io::Result<()>
@@ -34,20 +34,20 @@ pub trait OutputStream {
         Ok(())
     }
 
-    fn write_str(&mut self, field: usize, val: &str) -> io::Result<()> {
+    fn write_string(&mut self, field: usize, val: &str) -> io::Result<()> {
         self.write_byte(field, val.as_bytes())
     }
 
-    fn write_opt_str<S: Borrow<str>>(&mut self, field: usize, val: Option<S>) -> io::Result<()> {
+    fn write_opt_string<S: Borrow<str>>(&mut self, field: usize, val: Option<S>) -> io::Result<()> {
         match val {
-            Some(s) => try!(self.write_str(field, s.borrow())),
+            Some(s) => try!(self.write_string(field, s.borrow())),
             None => {}
         }
 
         Ok(())
     }
 
-    fn write_repeated_str<'a, I: Iterator<Item=&'a str>>(&mut self, field: usize, vals: I) -> io::Result<()> {
+    fn write_repeated_string<'a, I: Iterator<Item=&'a str>>(&mut self, field: usize, vals: I) -> io::Result<()> {
         self.write_repeated_byte(field, vals.map(|s| s.as_bytes()))
     }
 }
@@ -88,34 +88,5 @@ pub trait OutputStreamImpl {
         let bits = (field << 3) | (wire_type as usize);
         try!(self.write_usize(bits));
         Ok(())
-    }
-}
-
-pub trait NumField {
-    fn write_varint<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()>;
-}
-
-impl NumField for usize {
-    fn write_varint<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()> {
-        try!(out.write_head(field, WireType::Varint));
-        try!(out.write_usize(self));
-        Ok(())
-    }
-}
-
-impl NumField for u64 {
-    fn write_varint<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()> {
-        try!(out.write_head(field, WireType::Varint));
-        try!(out.write_unsigned_varint(self));
-        Ok(())
-    }
-}
-
-impl<F: NumField> NumField for Option<F> {
-    fn write_varint<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()> {
-        match self {
-            Some(v) => v.write_varint(field, out),
-            None => Ok(())
-        }
     }
 }

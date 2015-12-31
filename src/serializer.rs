@@ -1,5 +1,5 @@
 use {Serialize, OutputStream, WireType};
-use output_stream::{OutputStreamImpl, NumField};
+use output_stream::{OutputStreamImpl};
 use output_writer::OutputWriter;
 use std::io;
 
@@ -76,7 +76,9 @@ impl OutputStream for Serializer {
         Ok(())
     }
 
-    fn write_varint<F: NumField>(&mut self, field: usize, val: F) -> io::Result<()> {
-        val.write_varint(field, self)
+    fn write_varint<F: Into<u64>>(&mut self, field: usize, val: F) -> io::Result<()> {
+        try!(self.write_head(field, WireType::Varint));
+        try!(self.write_unsigned_varint(val.into()));
+        Ok(())
     }
 }
