@@ -13,7 +13,9 @@ pub trait OutputStream {
     fn write_varint_field<T: NumField>(&mut self, field: usize, val: T) -> io::Result<()>;
 
     /// Write a repeated message field
-    fn write_repeated_message_field<T: Serialize, I: IntoIterator<Item=T>>(&mut self, field: usize, msgs: I) -> io::Result<()> {
+    fn write_repeated_message_field<T, I>(&mut self, field: usize, msgs: I) -> io::Result<()>
+            where T: Serialize,
+                  I: IntoIterator<Item=T> {
         for msg in msgs {
             try!(self.write_message_field(field, &msg));
         }
@@ -49,12 +51,12 @@ pub trait OutputStream {
 
 pub trait OutputStreamImpl {
     /// Write raw bytes to the underlying stream
-    fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()>;
+    fn write_raw_bytes(&mut self, bytes: &[u8]) -> io::Result<()>;
 
     /// Write a single byte to the underlying stream
     fn write_byte(&mut self, byte: u8) -> io::Result<()> {
         let buf = [byte];
-        self.write_bytes(&buf)
+        self.write_raw_bytes(&buf)
     }
 
     fn write_usize(&mut self, val: usize) -> io::Result<()> {

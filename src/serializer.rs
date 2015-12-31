@@ -40,13 +40,7 @@ impl Serializer {
 }
 
 impl OutputStreamImpl for Serializer {
-    fn write_byte(&mut self, _: u8) -> io::Result<()> {
-        // TODO: Handle overflow
-        self.size += 1;
-        Ok(())
-    }
-
-    fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
+    fn write_raw_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
         // TODO: Handle overflow
         self.size += bytes.len();
         Ok(())
@@ -78,7 +72,7 @@ impl OutputStream for Serializer {
     fn write_byte_field(&mut self, field: usize, val: &[u8]) -> io::Result<()> {
         try!(self.write_head(field, WireType::LengthDelimited));
         try!(self.write_usize(val.len()));
-        try!(self.write_bytes(val));
+        try!(self.write_raw_bytes(val));
         Ok(())
     }
 
