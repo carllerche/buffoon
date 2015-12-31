@@ -1,4 +1,5 @@
-use {Deserialize, WireType};
+use {Deserialize};
+use wire_type::WireType;
 use std::{fmt, usize};
 use std::io::{self, Read};
 

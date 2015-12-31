@@ -1,4 +1,5 @@
-use {Serialize, WireType};
+use {Serialize};
+use wire_type::WireType;
 use std::io;
 use std::borrow::Borrow;
 

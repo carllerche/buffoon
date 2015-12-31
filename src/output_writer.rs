@@ -1,5 +1,6 @@
-use {Serialize, OutputStream, WireType};
+use {Serialize, OutputStream};
 use output_stream::OutputStreamImpl;
+use wire_type::WireType;
 use std::io::{self, Write};
 
 pub struct OutputWriter<'a, W:'a> {

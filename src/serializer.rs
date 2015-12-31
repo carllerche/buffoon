@@ -1,6 +1,7 @@
-use {Serialize, OutputStream, WireType};
+use {Serialize, OutputStream};
 use output_stream::{OutputStreamImpl};
 use output_writer::OutputWriter;
+use wire_type::WireType;
 use std::io;
 
 pub struct Serializer {

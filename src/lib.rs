@@ -8,6 +8,7 @@ mod input_stream;
 mod output_stream;
 mod output_writer;
 mod serializer;
+mod wire_type;
 
 /// Deserialize an encoded Protocol Buffers message.
 pub fn deserialize<T, R, I>(input: I) -> io::Result<T>
@@ -48,32 +49,6 @@ impl<'a, T: 'a + Serialize> Serialize for &'a T {
 pub trait Deserialize {
     fn deserialize<R: Read>(reader: &mut InputStream<R>) -> io::Result<Self>
             where Self: Sized;
-}
-
-#[derive(Debug)]
-enum WireType {
-    Varint = 0,
-    SixtyFourBit = 1,
-    LengthDelimited = 2,
-    StartGroup = 3,
-    EndGroup = 4,
-    ThirtyTwoBit = 5
-}
-
-impl WireType {
-    pub fn from_usize(val: usize) -> Option<WireType> {
-        use self::WireType::*;
-
-        Some(match val {
-            0 => Varint,
-            1 => SixtyFourBit,
-            2 => LengthDelimited,
-            3 => StartGroup,
-            4 => EndGroup,
-            5 => ThirtyTwoBit,
-            _ => return None
-        })
-    }
 }
 
 #[cfg(test)]
