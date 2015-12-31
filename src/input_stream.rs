@@ -1,8 +1,6 @@
-use {Deserialize};
+use {Deserialize, WireType};
 use std::{fmt, usize};
 use std::io::{self, Read};
-use wire_type::WireType;
-use wire_type::WireType::*;
 
 /// `InputStream` allows reading Protocol Buffers encoded data off of a stream.
 pub struct InputStream<R> {
@@ -176,15 +174,15 @@ impl<'a, R: Read> Field<'a, R> {
     /// Skip the current field
     pub fn skip(&mut self) -> io::Result<()> {
         match self.wire_type {
-            Varint => {
+            WireType::Varint => {
                 if let Some(_) = try!(self.input.read_unsigned_varint()) {
                     return Ok(());
                 }
 
                 Err(eof())
             }
-            SixtyFourBit => unimplemented!(),
-            LengthDelimited => {
+            WireType::SixtyFourBit => unimplemented!(),
+            WireType::LengthDelimited => {
                 if let Some(len) = try!(self.input.read_usize()) {
                     if len == try!(self.input.skip(len)) {
                         return Ok(());
@@ -193,16 +191,16 @@ impl<'a, R: Read> Field<'a, R> {
 
                 Err(eof())
             }
-            StartGroup => unimplemented!(),
-            EndGroup => unimplemented!(),
-            ThirtyTwoBit => unimplemented!()
+            WireType::StartGroup => unimplemented!(),
+            WireType::EndGroup => unimplemented!(),
+            WireType::ThirtyTwoBit => unimplemented!()
         }
     }
 
     /// Read the field value as `u64`
     pub fn read_u64(&mut self) -> io::Result<u64> {
         match self.wire_type {
-            Varint => {
+            WireType::Varint => {
                 if let Some(val) = try!(self.input.read_u64()) {
                     return Ok(val);
                 }
@@ -224,7 +222,7 @@ impl<'a, R: Read> Field<'a, R> {
     /// Read the field value as `Vec<u8>`
     pub fn read_bytes(&mut self) -> io::Result<Vec<u8>> {
         match self.wire_type {
-            LengthDelimited => {
+            WireType::LengthDelimited => {
                 if let Some(val) = try!(self.input.read_length_delimited()) {
                     return Ok(val);
                 }
@@ -238,7 +236,7 @@ impl<'a, R: Read> Field<'a, R> {
     /// Read the field value as `T`
     pub fn read_message<T: Deserialize>(&mut self) -> io::Result<T> {
         match self.wire_type {
-            LengthDelimited => {
+            WireType::LengthDelimited => {
                 if let Some(val) = try!(self.input.read_message()) {
                     return Ok(val);
                 }

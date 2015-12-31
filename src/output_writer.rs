@@ -1,6 +1,5 @@
-use {Serialize, OutputStream};
+use {Serialize, OutputStream, WireType};
 use output_stream::OutputStreamBackend;
-use wire_type::WireType::*;
 use std::io::{self, Write};
 
 pub struct OutputWriter<'a, W:'a> {
@@ -36,7 +35,7 @@ impl<'a, W: Write> OutputStream for OutputWriter<'a, W> {
         self.curr += 1;
 
         if size > 0 {
-            try!(self.write_head(field, LengthDelimited));
+            try!(self.write_head(field, WireType::LengthDelimited));
             try!(self.write_usize(size));
 
             try!(msg.serialize(self));

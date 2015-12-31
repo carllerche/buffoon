@@ -1,7 +1,6 @@
-use {Serialize, OutputStream};
+use {Serialize, OutputStream, WireType};
 use output_stream::OutputStreamBackend;
 use output_writer::OutputWriter;
-use wire_type::WireType::*;
 use std::io;
 
 pub struct Serializer {
@@ -69,7 +68,7 @@ impl OutputStream for Serializer {
         if nested_size > 0 {
             self.nested[position] = nested_size;
 
-            try!(self.write_head(field, LengthDelimited));
+            try!(self.write_head(field, WireType::LengthDelimited));
             try!(self.write_usize(nested_size));
         }
 

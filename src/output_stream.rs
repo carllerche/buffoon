@@ -1,6 +1,4 @@
-use {Serialize};
-use wire_type::WireType;
-use wire_type::WireType::*;
+use {Serialize, WireType};
 use std::io;
 use std::borrow::Borrow;
 
@@ -21,7 +19,7 @@ pub trait OutputStream : OutputStreamBackend {
     }
 
     fn write_byte_field(&mut self, field: usize, val: &[u8]) -> io::Result<()> {
-        try!(self.write_head(field, LengthDelimited));
+        try!(self.write_head(field, WireType::LengthDelimited));
         try!(self.write_usize(val.len()));
         try!(self.write_bytes(val));
         Ok(())
@@ -97,7 +95,7 @@ pub trait NumField {
 
 impl NumField for usize {
     fn write_varint_field<O: OutputStream>(self, field: usize, out: &mut O) -> io::Result<()> {
-        try!(out.write_head(field, Varint));
+        try!(out.write_head(field, WireType::Varint));
         try!(out.write_usize(self));
         Ok(())
     }
@@ -105,7 +103,7 @@ impl NumField for usize {
 
 impl NumField for u64 {
     fn write_varint_field<O: OutputStream>(self, field: usize, out: &mut O) -> io::Result<()> {
-        try!(out.write_head(field, Varint));
+        try!(out.write_head(field, WireType::Varint));
         try!(out.write_unsigned_varint(self));
         Ok(())
     }
