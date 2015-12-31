@@ -2,26 +2,22 @@ use {Serialize, WireType};
 use std::io;
 use std::borrow::Borrow;
 
-pub trait OutputStream : OutputStreamBackend {
+pub trait OutputStream {
     /// Writes a nested message with the specified field number
     fn write_message_field<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()>;
 
-    fn write_repeated_message_field<'a, T: 'a + Serialize, I: IntoIterator<Item=T>>(&mut self, field: usize, msgs: I) -> io::Result<()> {
+    /// Writes a field as bytes
+    fn write_byte_field(&mut self, field: usize, val: &[u8]) -> io::Result<()>;
+
+    /// Write a field as a varint
+    fn write_varint_field<T: NumField>(&mut self, field: usize, val: T) -> io::Result<()>;
+
+    /// Write a repeated message field
+    fn write_repeated_message_field<T: Serialize, I: IntoIterator<Item=T>>(&mut self, field: usize, msgs: I) -> io::Result<()> {
         for msg in msgs {
             try!(self.write_message_field(field, &msg));
         }
 
-        Ok(())
-    }
-
-    fn write_varint_field<F: NumField>(&mut self, field: usize, val: F) -> io::Result<()> {
-        val.write_varint_field(field, self)
-    }
-
-    fn write_byte_field(&mut self, field: usize, val: &[u8]) -> io::Result<()> {
-        try!(self.write_head(field, WireType::LengthDelimited));
-        try!(self.write_usize(val.len()));
-        try!(self.write_bytes(val));
         Ok(())
     }
 
@@ -51,10 +47,11 @@ pub trait OutputStream : OutputStreamBackend {
     }
 }
 
-pub trait OutputStreamBackend : Sized {
+pub trait OutputStreamImpl {
+    /// Write raw bytes to the underlying stream
     fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()>;
 
-    // Write a single byte
+    /// Write a single byte to the underlying stream
     fn write_byte(&mut self, byte: u8) -> io::Result<()> {
         let buf = [byte];
         self.write_bytes(&buf)
@@ -90,11 +87,11 @@ pub trait OutputStreamBackend : Sized {
 }
 
 pub trait NumField {
-    fn write_varint_field<O: OutputStream>(self, field: usize, out: &mut O) -> io::Result<()>;
+    fn write_varint_field<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()>;
 }
 
 impl NumField for usize {
-    fn write_varint_field<O: OutputStream>(self, field: usize, out: &mut O) -> io::Result<()> {
+    fn write_varint_field<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()> {
         try!(out.write_head(field, WireType::Varint));
         try!(out.write_usize(self));
         Ok(())
@@ -102,7 +99,7 @@ impl NumField for usize {
 }
 
 impl NumField for u64 {
-    fn write_varint_field<O: OutputStream>(self, field: usize, out: &mut O) -> io::Result<()> {
+    fn write_varint_field<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()> {
         try!(out.write_head(field, WireType::Varint));
         try!(out.write_unsigned_varint(self));
         Ok(())
@@ -110,7 +107,7 @@ impl NumField for u64 {
 }
 
 impl<F: NumField> NumField for Option<F> {
-    fn write_varint_field<O: OutputStream>(self, field: usize, out: &mut O) -> io::Result<()> {
+    fn write_varint_field<O: ?Sized + OutputStreamImpl>(self, field: usize, out: &mut O) -> io::Result<()> {
         match self {
             Some(v) => v.write_varint_field(field, out),
             None => Ok(())

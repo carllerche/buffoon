@@ -1,5 +1,5 @@
 use {Serialize, OutputStream, WireType};
-use output_stream::OutputStreamBackend;
+use output_stream::{OutputStreamImpl, NumField};
 use output_writer::OutputWriter;
 use std::io;
 
@@ -39,7 +39,7 @@ impl Serializer {
     }
 }
 
-impl OutputStreamBackend for Serializer {
+impl OutputStreamImpl for Serializer {
     fn write_byte(&mut self, _: u8) -> io::Result<()> {
         // TODO: Handle overflow
         self.size += 1;
@@ -73,5 +73,16 @@ impl OutputStream for Serializer {
         }
 
         Ok(())
+    }
+
+    fn write_byte_field(&mut self, field: usize, val: &[u8]) -> io::Result<()> {
+        try!(self.write_head(field, WireType::LengthDelimited));
+        try!(self.write_usize(val.len()));
+        try!(self.write_bytes(val));
+        Ok(())
+    }
+
+    fn write_varint_field<F: NumField>(&mut self, field: usize, val: F) -> io::Result<()> {
+        val.write_varint_field(field, self)
     }
 }
