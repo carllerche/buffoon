@@ -1,5 +1,5 @@
-use {Serialize, OutputStream};
-use output_stream::OutputStreamImpl;
+use {Serialize, OutputStream, Varint};
+use output_stream::write_head;
 use wire_type::WireType;
 use std::io::{self, Write};
 
@@ -19,32 +19,12 @@ impl<'a, W: Write> OutputWriter<'a, W> {
     }
 }
 
-impl<'a, W: Write> OutputStreamImpl for OutputWriter<'a, W> {
-    fn write_raw_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
-        try!(self.writer.write(bytes));
-        Ok(())
-    }
-
-    fn write_unsigned_varint(&mut self, mut val: u64) -> io::Result<()> {
-        loop {
-            // Grab up to 7 bits of the number
-            let bits = (val & 0x7f) as u8;
-
-            // Shift the remaining bits
-            val >>= 7;
-
-            if val == 0 {
-                try!(self.write_raw_byte(bits));
-                return Ok(());
-            }
-
-            try!(self.write_raw_byte(bits | 0x80));
-        }
-    }
-}
-
 impl<'a, W: Write> OutputStream for OutputWriter<'a, W> {
-    fn write_message<T: Serialize>(&mut self, field: usize, msg: &T) -> io::Result<()> {
+    fn write<T: ?Sized + Serialize>(&mut self, field: u32, val: &T) -> io::Result<()> {
+        val.serialize_nested(field, self)
+    }
+
+    fn write_nested<T: ?Sized + Serialize>(&mut self, field: u32, val: &T) -> io::Result<()> {
         if self.curr >= self.nested.len() {
             return invalid_serializer();
         }
@@ -53,23 +33,23 @@ impl<'a, W: Write> OutputStream for OutputWriter<'a, W> {
         self.curr += 1;
 
         if size > 0 {
-            try!(self.write_head(field, WireType::LengthDelimited));
-            try!(self.write_usize(size));
+            try!(write_head(self, field, WireType::LengthDelimited));
+            try!(self.write_raw_varint(size));
 
-            try!(msg.serialize(self));
+            try!(val.serialize(self));
         };
 
         Ok(())
     }
 
-    fn write_varint<F: Into<u64>>(&mut self, field: usize, val: F) -> io::Result<()> {
-        try!(self.write_head(field, WireType::Varint));
-        try!(self.write_unsigned_varint(val.into()));
+    fn write_varint<T: Varint>(&mut self, field: u32, val: T) -> io::Result<()> {
+        try!(write_head(self, field, WireType::Varint));
+        try!(self.write_raw_varint(val));
         Ok(())
     }
 
-    fn write_packed_varint<T: Into<u64>, I>(&mut self, field: usize, vals: I) -> io::Result<()>
-            where T: Into<u64>,
+    fn write_packed<T, I>(&mut self, field: u32, vals: I) -> io::Result<()>
+            where T: Varint,
                   I: IntoIterator<Item=T> {
         if self.curr >= self.nested.len() {
             return invalid_serializer();
@@ -79,22 +59,31 @@ impl<'a, W: Write> OutputStream for OutputWriter<'a, W> {
         self.curr += 1;
 
         if size > 0 {
-            try!(self.write_head(field, WireType::LengthDelimited));
-            try!(self.write_usize(size));
+            try!(write_head(self, field, WireType::LengthDelimited));
+            try!(self.write_raw_varint(size));
 
             for val in vals {
-                try!(self.write_unsigned_varint(val.into()));
+                try!(self.write_raw_varint(val));
             }
         };
 
         Ok(())
     }
 
-    fn write_bytes(&mut self, field: usize, val: &[u8]) -> io::Result<()> {
-        try!(self.write_head(field, WireType::LengthDelimited));
-        try!(self.write_usize(val.len()));
+    fn write_bytes(&mut self, field: u32, val: &[u8]) -> io::Result<()> {
+        try!(write_head(self, field, WireType::LengthDelimited));
+        try!(self.write_raw_varint(val.len()));
         try!(self.write_raw_bytes(val));
         Ok(())
+    }
+
+    fn write_raw_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
+        try!(self.writer.write(bytes));
+        Ok(())
+    }
+
+    fn write_raw_varint<T: Varint>(&mut self, val: T) -> io::Result<()> {
+        val.write(&mut self.writer)
     }
 }
 

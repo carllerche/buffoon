@@ -1,6 +1,7 @@
 pub use input_stream::{InputStream, Field};
 pub use output_stream::OutputStream;
 pub use serializer::Serializer;
+pub use types::Varint;
 
 use std::io::{self, Read};
 
@@ -8,15 +9,14 @@ mod input_stream;
 mod output_stream;
 mod output_writer;
 mod serializer;
+mod types;
 mod wire_type;
 
 /// Deserialize an encoded Protocol Buffers message.
-pub fn deserialize<T, R, I>(input: I) -> io::Result<T>
+pub fn deserialize<T, R>(input: R) -> io::Result<T>
         where T: Deserialize,
-              R: io::Read,
-              I: Into<InputStream<R>> {
-    let mut input = input.into();
-    T::deserialize(&mut input)
+              R: io::Read {
+    T::deserialize(&mut input_stream::from(input))
 }
 
 pub fn serializer_for<T: Serialize>(msg: &T) -> io::Result<Serializer> {
@@ -36,19 +36,32 @@ pub fn serialize<T: Serialize>(msg: &T) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// A trait for values which can be serialized
 pub trait Serialize {
+    /// Serialize the value to the given output stream.
     fn serialize<O>(&self, out: &mut O) -> io::Result<()> where O: OutputStream;
-}
 
-impl<'a, T: 'a + Serialize> Serialize for &'a T {
-    fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
-        (*self).serialize(out)
+    /*
+     *
+     * ===== Used for internal implementations =====
+     *
+     */
+
+    #[doc(hidden)]
+    fn serialize_nested<O: OutputStream>(&self, field: u32, out: &mut O) -> io::Result<()> {
+        out.write_nested(field, self)
     }
 }
 
-pub trait Deserialize {
-    fn deserialize<R: Read>(reader: &mut InputStream<R>) -> io::Result<Self>
-            where Self: Sized;
+/// A trait for values which can be deserialized
+pub trait Deserialize : Sized {
+    /// Deserialize the value
+    fn deserialize<R: Read>(input: &mut InputStream<R>) -> io::Result<Self>;
+
+    #[doc(hidden)]
+    fn deserialize_nested<R: Read>(field: &mut Field<R>) -> io::Result<Self> {
+        field.read_nested()
+    }
 }
 
 #[cfg(test)]
@@ -76,10 +89,7 @@ mod test {
 
         impl Serialize for Simple {
             fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
-                try!(out.write_string(1, "hello"));
-                // try!(output.write_varint(2, self.config()));
-                // try!(output.write_repeated_string(3, self.cmd().iter().map(|s| s.as_slice())));
-
+                try!(out.write(1, "hello"));
                 Ok(())
             }
         }
@@ -95,7 +105,7 @@ mod test {
 
         impl Serialize for Simple {
             fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
-                try!(out.write_packed_varint(4, [3u64, 270, 86942].iter().map(|num| *num)));
+                try!(out.write_packed(4, [3u64, 270, 86942].iter().map(|num| *num)));
                 Ok(())
             }
         }
