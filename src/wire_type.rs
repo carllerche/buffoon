@@ -9,7 +9,7 @@ pub enum WireType {
 }
 
 impl WireType {
-    pub fn from_usize(val: usize) -> Option<WireType> {
+    pub fn from_u32(val: u32) -> Option<WireType> {
         use self::WireType::*;
 
         Some(match val {

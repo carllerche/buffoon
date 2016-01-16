@@ -1,6 +1,6 @@
 use {Deserialize, Varint};
 use wire_type::WireType;
-use std::{fmt, usize};
+use std::fmt;
 use std::io::{self, Read};
 use std::marker::PhantomData;
 
@@ -29,14 +29,14 @@ impl<R: Read> InputStream<R> {
     pub fn read_field(&mut self) -> io::Result<Option<Field<R>>> {
         // Read the header byte. In this case, EOF errors are OK as they signify
         // that there is no field to read
-        let head = match self.read_usize() {
+        let head = match self.read_varint::<u32>() {
             Ok(Some(h)) => h,
             Ok(None) => return Ok(None),
             Err(e) => return Err(e),
         };
 
         // Extract the type of the field
-        let wire_type = match WireType::from_usize(head & 0x7) {
+        let wire_type = match WireType::from_u32(head & 0x7) {
             Some(res) => res,
             None => return Err(unexpected_output("invalid wire type"))
         };
@@ -48,55 +48,17 @@ impl<R: Read> InputStream<R> {
         }))
     }
 
-    /// Reads an unsigned varint as `usize`.
-    ///
-    /// If at EOF before reading the first byte, returns Ok(None).
-    fn read_usize(&mut self) -> io::Result<Option<usize>> {
-        if let Some(num) = try!(self.read_unsigned_varint()) {
-            if num > (usize::MAX as u64) {
-                return Err(unexpected_output("requested value could not fit in usize"));
-            }
-
-            return Ok(Some(num as usize));
-        }
-
-        Ok(None)
-    }
-
     /// Read an unsigned varint as `u64`.
     ///
     /// If at EOF before reading the first byte, returns Ok(None).
-    fn read_u64(&mut self) -> io::Result<Option<u64>> {
-        self.read_unsigned_varint()
-    }
-
-    /// Read an unsigned varint as `u64`.
-    ///
-    /// If at EOF before reading the first byte, returns Ok(None).
-    fn read_unsigned_varint(&mut self) -> io::Result<Option<u64>> {
-        let mut ret: u64 = 0;
-        let mut shift = 0;
-
-        while let Some(byte) = try!(self.read_byte()) {
-            let bits = (byte & 0x7f) as u64;
-
-            ret |= bits << shift;
-            shift += 7;
-
-            if !has_msb(byte) {
-                return Ok(Some(ret));
-            }
-        }
-
-        match shift {
-            0 => Ok(None),
-            _ => Err(eof()),
-        }
+    #[doc(hidden)]
+    pub fn read_varint<T: Varint>(&mut self) -> io::Result<Option<T>> {
+        T::read(&mut self.reader)
     }
 
     /// Reads a length delimited field and returns the data as `Vec<u8>`
     fn read_length_delimited(&mut self) -> io::Result<Option<Vec<u8>>> {
-        if let Some(len) = try!(self.read_usize()) {
+        if let Some(len) = try!(self.read_varint::<usize>()) {
             return self.read_exact(len).map(|ret| Some(ret));
         }
 
@@ -149,7 +111,7 @@ impl<R: Read> InputStream<R> {
 
     /// Reads and deserializes a nested message.
     fn read_message<T: Deserialize>(&mut self) -> io::Result<Option<T>> {
-        if let Some(len) = try!(self.read_u64()) {
+        if let Some(len) = try!(self.read_varint::<u64>()) {
             let mut input = InputStream::from((&mut self.reader).take(len));
             return T::deserialize(&mut input).map(Some);
         }
@@ -177,13 +139,13 @@ impl<R: Read> InputStream<R> {
 
 pub struct Field<'a, R: 'a> {
     input: &'a mut InputStream<R>,
-    tag: usize,
+    tag: u32,
     wire_type: WireType
 }
 
 impl<'a, R: Read> Field<'a, R> {
     /// Get the field tag
-    pub fn tag(&self) -> usize {
+    pub fn tag(&self) -> u32 {
         self.tag
     }
 
@@ -191,7 +153,7 @@ impl<'a, R: Read> Field<'a, R> {
     pub fn skip(&mut self) -> io::Result<()> {
         match self.wire_type {
             WireType::Varint => {
-                if let Some(_) = try!(self.input.read_unsigned_varint()) {
+                if let Some(_) = try!(self.input.read_varint::<u64>()) {
                     return Ok(());
                 }
 
@@ -199,7 +161,7 @@ impl<'a, R: Read> Field<'a, R> {
             }
             WireType::SixtyFourBit => unimplemented!(),
             WireType::LengthDelimited => {
-                if let Some(len) = try!(self.input.read_usize()) {
+                if let Some(len) = try!(self.input.read_varint::<usize>()) {
                     if len == try!(self.input.skip(len)) {
                         return Ok(());
                     }
@@ -220,7 +182,7 @@ impl<'a, R: Read> Field<'a, R> {
     pub fn read_packed<T: Varint>(&mut self) -> io::Result<Varints<T, R>> {
         match self.wire_type {
             WireType::LengthDelimited => {
-                let len = try!(self.input.read_u64()).unwrap_or(0);
+                let len = try!(self.input.read_varint::<u64>()).unwrap_or(0);
                 let input = InputStream::from((&mut self.input.reader).take(len));
                 Ok(Varints {
                     input: input,
@@ -309,10 +271,6 @@ impl<'a, T: Varint, R: 'a + io::Read> Iterator for Varints<'a, T, R> {
  * ===== Misc =====
  *
  */
-
-fn has_msb(byte: u8) -> bool {
-    byte & 0x80 != 0
-}
 
 fn unexpected_output(desc: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, desc)

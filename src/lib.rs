@@ -5,6 +5,21 @@ pub use types::Varint;
 
 use std::io::{self, Read};
 
+// Require a buffoon field
+#[macro_export]
+macro_rules! required {
+    ($name:expr, $field:expr) => ({
+        match $name {
+            Some(val) => val,
+            None => {
+                return Err(::std::io::Error::new(
+                            ::std::io::ErrorKind::InvalidInput,
+                            concat!($field, " missing but is required")));
+            }
+        }
+    })
+}
+
 mod input_stream;
 mod output_stream;
 mod output_writer;

@@ -7,6 +7,12 @@ impl<'a, T: 'a + Serialize> Serialize for &'a T {
     }
 }
 
+/*
+ *
+ * ===== Vec & String =====
+ *
+ */
+
 impl Serialize for [u8] {
     fn serialize<O: OutputStream>(&self, _: &mut O) -> io::Result<()> {
         unimplemented!();
@@ -70,6 +76,12 @@ impl Deserialize for String {
     }
 }
 
+/*
+ *
+ * ===== Option =====
+ *
+ */
+
 impl<T: Serialize> Serialize for Option<T> {
     fn serialize<O: OutputStream>(&self, _: &mut O) -> io::Result<()> {
         unimplemented!();
@@ -86,7 +98,44 @@ impl<T: Serialize> Serialize for Option<T> {
 
 /*
  *
- * ===== TBD =====
+ * ===== Tuples =====
+ *
+ */
+
+impl<T1, T2> Serialize for (T1, T2)
+        where T1: Serialize,
+              T2: Serialize {
+
+    fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
+        try!(out.write(1, &self.0));
+        try!(out.write(2, &self.1));
+        Ok(())
+    }
+}
+
+impl<T1, T2> Deserialize for (T1, T2)
+        where T1: Deserialize,
+              T2: Deserialize {
+
+    fn deserialize<R: io::Read>(i: &mut InputStream<R>) -> io::Result<Self> {
+        let mut a = None;
+        let mut b = None;
+
+        while let Some(mut f) = try!(i.read_field()) {
+            match f.tag() {
+                1 => a = Some(try!(f.read())),
+                2 => b = Some(try!(f.read())),
+                _ => try!(f.skip()),
+            }
+        }
+
+        Ok((required!(a, "tuple::0"), required!(b, "tuple::1")))
+    }
+}
+
+/*
+ *
+ * ===== Varint =====
  *
  */
 
@@ -105,8 +154,8 @@ pub trait Varint: Sized {
 macro_rules! impl_unsigned {
     ($Ty:ty) => {
         impl Serialize for $Ty {
-            fn serialize<O: OutputStream>(&self, _: &mut O) -> io::Result<()> {
-                unimplemented!();
+            fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
+                out.write_raw_varint(*self)
             }
 
             fn serialize_nested<O: OutputStream>(&self, field: u32, out: &mut O) -> io::Result<()> {
@@ -115,8 +164,11 @@ macro_rules! impl_unsigned {
         }
 
         impl Deserialize for $Ty {
-            fn deserialize<R: io::Read>(_: &mut InputStream<R>) -> io::Result<Self> {
-                unimplemented!();
+            fn deserialize<R: io::Read>(i: &mut InputStream<R>) -> io::Result<Self> {
+                match try!(i.read_varint()) {
+                    Some(v) => Ok(v),
+                    None => Err(eof()),
+                }
             }
 
             fn deserialize_nested<R: io::Read>(field: &mut Field<R>) -> io::Result<Self> {
