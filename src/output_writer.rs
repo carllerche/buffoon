@@ -25,12 +25,16 @@ impl<'a, W: Write> OutputStream for OutputWriter<'a, W> {
     }
 
     fn write_nested<T: ?Sized + Serialize>(&mut self, field: u32, val: &T) -> io::Result<()> {
+        trace!("OutputWriter::write_nested");
+
         if self.curr >= self.nested.len() {
             return invalid_serializer();
         }
 
         let size = self.nested[self.curr];
         self.curr += 1;
+
+        trace!("  -> size={:?}; curr={:?}", size, self.curr);
 
         if size > 0 {
             try!(write_head(self, field, WireType::LengthDelimited));
@@ -72,9 +76,7 @@ impl<'a, W: Write> OutputStream for OutputWriter<'a, W> {
 
     fn write_bytes(&mut self, field: u32, val: &[u8]) -> io::Result<()> {
         try!(write_head(self, field, WireType::LengthDelimited));
-        try!(self.write_raw_varint(val.len()));
-        try!(self.write_raw_bytes(val));
-        Ok(())
+        val.serialize(self)
     }
 
     fn write_raw_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {

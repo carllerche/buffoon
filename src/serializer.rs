@@ -47,15 +47,21 @@ impl Serializer {
         // Add 0 as a placeholder for the current message
         self.nested.push(0);
 
+        trace!("----> counting nested");
+
         try!(f(self));
 
         let nested_size = self.size - prev_count;
+
+        trace!("----> serialized nested; size={}; pos={}", nested_size, position);
 
         if nested_size > 0 {
             self.nested[position] = nested_size;
 
             try!(write_head(self, field, WireType::LengthDelimited));
             try!(self.write_raw_varint(nested_size));
+        } else {
+            self.nested.truncate(position + 1);
         }
 
         Ok(())
@@ -80,9 +86,7 @@ impl OutputStream for Serializer {
 
     fn write_bytes(&mut self, field: u32, val: &[u8]) -> io::Result<()> {
         try!(write_head(self, field, WireType::LengthDelimited));
-        try!(self.write_raw_varint(val.len()));
-        try!(self.write_raw_bytes(val));
-        Ok(())
+        val.serialize(self)
     }
 
     fn write_packed<T, I>(&mut self, field: u32, vals: I) -> io::Result<()>
@@ -106,7 +110,9 @@ impl OutputStream for Serializer {
     }
 
     fn write_raw_varint<T: Varint>(&mut self, val: T) -> io::Result<()> {
-        self.size += val.wire_len();
+        let len = val.wire_len();
+        trace!("Serializer::write_raw_varint; len={:?}", len);
+        self.size += len;
         Ok(())
     }
 }

@@ -57,7 +57,8 @@ impl<R: Read> InputStream<R> {
     }
 
     /// Reads a length delimited field and returns the data as `Vec<u8>`
-    fn read_length_delimited(&mut self) -> io::Result<Option<Vec<u8>>> {
+    #[doc(hidden)]
+    pub fn read_length_delimited(&mut self) -> io::Result<Option<Vec<u8>>> {
         if let Some(len) = try!(self.read_varint::<usize>()) {
             return self.read_exact(len).map(|ret| Some(ret));
         }

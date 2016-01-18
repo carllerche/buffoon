@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 pub use input_stream::{InputStream, Field};
 pub use output_stream::OutputStream;
 pub use serializer::Serializer;
@@ -8,6 +11,7 @@ use std::io::{self, Read};
 // Require a buffoon field
 #[macro_export]
 macro_rules! required {
+    ($name:expr) => (required!($name, stringify!($name)));
     ($name:expr, $field:expr) => ({
         match $name {
             Some(val) => val,
@@ -44,9 +48,12 @@ pub fn serializer_for<T: Serialize>(msg: &T) -> io::Result<Serializer> {
 }
 
 pub fn serialize<T: Serialize>(msg: &T) -> io::Result<Vec<u8>> {
+    trace!("serializing message");
+    trace!("  - reading nested message lengths");
     let serializer = try!(serializer_for(msg));
     let mut bytes = vec![0u8; serializer.size()];
 
+    trace!("  - writing serialized message");
     try!(serializer.serialize_into(msg, &mut bytes));
     Ok(bytes)
 }
@@ -62,7 +69,10 @@ pub trait Serialize {
      *
      */
 
-    #[doc(hidden)]
+    /// Serialize the value nested in a protobuf message using the given field.
+    /// Usually, this function doesn't need to be implemented. However, if the
+    /// value in question wishes to simply proxy serialization to a field, then
+    /// implement this function as a proxy.
     fn serialize_nested<O: OutputStream>(&self, field: u32, out: &mut O) -> io::Result<()> {
         out.write_nested(field, self)
     }
@@ -73,7 +83,6 @@ pub trait Deserialize : Sized {
     /// Deserialize the value
     fn deserialize<R: Read>(input: &mut InputStream<R>) -> io::Result<Self>;
 
-    #[doc(hidden)]
     fn deserialize_nested<R: Read>(field: &mut Field<R>) -> io::Result<Self> {
         field.read_nested()
     }

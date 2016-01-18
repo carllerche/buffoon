@@ -13,3 +13,9 @@ authors = [
   "Carl Lerche<me@carllerche.com>",
   "tim@spork.in"
 ]
+
+[dependencies]
+log = "*"
+
+[dev-dependencies]
+env_logger = "*"
