@@ -5,6 +5,10 @@ impl<'a, T: 'a + Serialize> Serialize for &'a T {
     fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
         (*self).serialize(out)
     }
+
+    fn serialize_nested<O: OutputStream>(&self, field: u32, out: &mut O) -> io::Result<()> {
+        (*self).serialize_nested(field, out)
+    }
 }
 
 /*
@@ -14,10 +18,8 @@ impl<'a, T: 'a + Serialize> Serialize for &'a T {
  */
 
 impl Serialize for [u8] {
-    fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
-        try!(out.write_raw_varint(self.len()));
-        try!(out.write_raw_bytes(self));
-        Ok(())
+    fn serialize<O: OutputStream>(&self, _: &mut O) -> io::Result<()> {
+        unimplemented!();
     }
 
     fn serialize_nested<O: OutputStream>(&self, field: u32, out: &mut O) -> io::Result<()> {
@@ -26,8 +28,8 @@ impl Serialize for [u8] {
 }
 
 impl Serialize for Vec<u8> {
-    fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
-        (&**self).serialize(out)
+    fn serialize<O: OutputStream>(&self, _: &mut O) -> io::Result<()> {
+        unimplemented!();
     }
 
     fn serialize_nested<O: OutputStream>(&self, field: u32, out: &mut O) -> io::Result<()> {
@@ -36,11 +38,8 @@ impl Serialize for Vec<u8> {
 }
 
 impl Deserialize for Vec<u8> {
-    fn deserialize<R: io::Read>(i: &mut InputStream<R>) -> io::Result<Self> {
-        match try!(i.read_length_delimited()) {
-            Some(b) => Ok(b),
-            None => Err(eof()),
-        }
+    fn deserialize<R: io::Read>(_: &mut InputStream<R>) -> io::Result<Self> {
+        unimplemented!();
     }
 
     fn deserialize_nested<R: io::Read>(field: &mut Field<R>) -> io::Result<Vec<u8>> {
@@ -49,8 +48,8 @@ impl Deserialize for Vec<u8> {
 }
 
 impl Serialize for str {
-    fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
-        self.as_bytes().serialize(out)
+    fn serialize<O: OutputStream>(&self, _: &mut O) -> io::Result<()> {
+        unimplemented!();
     }
 
     fn serialize_nested<O: OutputStream>(&self, field: u32, out: &mut O) -> io::Result<()> {
@@ -59,8 +58,8 @@ impl Serialize for str {
 }
 
 impl Serialize for String {
-    fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
-        (&**self).serialize(out)
+    fn serialize<O: OutputStream>(&self, _: &mut O) -> io::Result<()> {
+        unimplemented!();
     }
 
     fn serialize_nested<O: OutputStream>(&self, field: u32, out: &mut O) -> io::Result<()> {
@@ -69,11 +68,8 @@ impl Serialize for String {
 }
 
 impl Deserialize for String {
-    fn deserialize<R: io::Read>(i: &mut InputStream<R>) -> io::Result<Self> {
-        match String::from_utf8(try!(Vec::deserialize(i))) {
-            Ok(s) => Ok(s),
-            Err(_) => Err(unexpected_output("string not UTF-8 encoded")),
-        }
+    fn deserialize<R: io::Read>(_: &mut InputStream<R>) -> io::Result<Self> {
+        unimplemented!();
     }
 
     fn deserialize_nested<R: io::Read>(field: &mut Field<R>) -> io::Result<String> {
@@ -162,8 +158,8 @@ pub trait Varint: Sized {
 macro_rules! impl_unsigned {
     ($Ty:ty) => {
         impl Serialize for $Ty {
-            fn serialize<O: OutputStream>(&self, out: &mut O) -> io::Result<()> {
-                out.write_raw_varint(*self)
+            fn serialize<O: OutputStream>(&self, _: &mut O) -> io::Result<()> {
+                unimplemented!();
             }
 
             fn serialize_nested<O: OutputStream>(&self, field: u32, out: &mut O) -> io::Result<()> {

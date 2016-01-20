@@ -86,7 +86,9 @@ impl OutputStream for Serializer {
 
     fn write_bytes(&mut self, field: u32, val: &[u8]) -> io::Result<()> {
         try!(write_head(self, field, WireType::LengthDelimited));
-        val.serialize(self)
+        try!(self.write_raw_varint(val.len()));
+        try!(self.write_raw_bytes(val));
+        Ok(())
     }
 
     fn write_packed<T, I>(&mut self, field: u32, vals: I) -> io::Result<()>
