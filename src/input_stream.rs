@@ -1,6 +1,7 @@
 use {Deserialize, Varint};
+use take::Take;
 use wire_type::WireType;
-use std::fmt;
+use std::{fmt, u64};
 use std::io::{self, Read};
 use std::marker::PhantomData;
 
@@ -12,7 +13,7 @@ use std::marker::PhantomData;
 
 /// `InputStream` allows reading Protocol Buffers encoded data off of a stream.
 pub struct InputStream<R> {
-    reader: R
+    reader: Take<R>,
 }
 
 pub fn from<R: Read>(read: R) -> InputStream<R> {
@@ -21,7 +22,7 @@ pub fn from<R: Read>(read: R) -> InputStream<R> {
 
 impl<R: Read> InputStream<R> {
     fn from(reader: R) -> InputStream<R> {
-        InputStream { reader: reader }
+        InputStream { reader: Take::new(reader, u64::MAX) }
     }
 
     /// Reads the a field header and returns a `Field` which allows reading the
@@ -113,8 +114,20 @@ impl<R: Read> InputStream<R> {
     /// Reads and deserializes a nested message.
     fn read_message<T: Deserialize>(&mut self) -> io::Result<Option<T>> {
         if let Some(len) = try!(self.read_varint::<u64>()) {
-            let mut input = InputStream::from((&mut self.reader).take(len));
-            return T::deserialize(&mut input).map(Some);
+            let lim = self.reader.limit();
+
+            if len > lim {
+                return Err(unexpected_output("nested message longer than parent"));
+            }
+
+            self.reader.set_limit(len);
+
+            let ret = T::deserialize(self).map(Some);
+
+            let consumed = len - self.reader.limit();
+            self.reader.set_limit(lim - consumed);
+
+            return ret;
         }
 
         Ok(None)
@@ -138,6 +151,7 @@ impl<R: Read> InputStream<R> {
  *
  */
 
+#[must_use = "Field must be consumed either by reading or skipping. Not doing so will corrupt the deserialization state"]
 pub struct Field<'a, R: 'a> {
     input: &'a mut InputStream<R>,
     tag: u32,
@@ -151,7 +165,7 @@ impl<'a, R: Read> Field<'a, R> {
     }
 
     /// Skip the current field
-    pub fn skip(&mut self) -> io::Result<()> {
+    pub fn skip(self) -> io::Result<()> {
         match self.wire_type {
             WireType::Varint => {
                 if let Some(_) = try!(self.input.read_varint::<u64>()) {
@@ -176,11 +190,11 @@ impl<'a, R: Read> Field<'a, R> {
         }
     }
 
-    pub fn read<T: Deserialize>(&mut self) -> io::Result<T> {
+    pub fn read<T: Deserialize>(self) -> io::Result<T> {
         T::deserialize_nested(self)
     }
 
-    pub fn read_packed<T: Varint>(&mut self) -> io::Result<Varints<T, R>> {
+    pub fn read_packed<T: Varint>(self) -> io::Result<Varints<'a, T, R>> {
         match self.wire_type {
             WireType::LengthDelimited => {
                 let len = try!(self.input.read_varint::<u64>()).unwrap_or(0);
@@ -189,14 +203,13 @@ impl<'a, R: Read> Field<'a, R> {
                     input: input,
                     phantom: PhantomData,
                 })
-
             }
             _ => Err(unexpected_output("field type was not length delimited")),
         }
     }
 
     #[doc(hidden)]
-    pub fn read_nested<T: Deserialize>(&mut self) -> io::Result<T> {
+    pub fn read_nested<T: Deserialize>(self) -> io::Result<T> {
         match self.wire_type {
             WireType::LengthDelimited => {
                 if let Some(val) = try!(self.input.read_message()) {
@@ -210,7 +223,7 @@ impl<'a, R: Read> Field<'a, R> {
     }
 
     #[doc(hidden)]
-    pub fn read_varint<T: Varint>(&mut self) -> io::Result<T> {
+    pub fn read_varint<T: Varint>(self) -> io::Result<T> {
         match self.wire_type {
             WireType::Varint => {
                 if let Some(val) = try!(T::read(&mut self.input.reader)) {
@@ -224,7 +237,7 @@ impl<'a, R: Read> Field<'a, R> {
     }
 
     #[doc(hidden)]
-    pub fn read_bytes(&mut self) -> io::Result<Vec<u8>> {
+    pub fn read_bytes(self) -> io::Result<Vec<u8>> {
         match self.wire_type {
             WireType::LengthDelimited => {
                 if let Some(val) = try!(self.input.read_length_delimited()) {
@@ -251,7 +264,7 @@ impl<'a, R> fmt::Debug for Field<'a, R> {
  */
 
 pub struct Varints<'a, T: Varint, R: 'a> {
-    input: InputStream<io::Take<&'a mut R>>,
+    input: InputStream<io::Take<&'a mut Take<R>>>,
     phantom: PhantomData<T>,
 }
 
@@ -296,7 +309,7 @@ mod test {
     pub fn test_reading_string() {
         with_input_stream(b"\x0A\x04zomg", |i| {
             {
-                let mut f = i.read_field().unwrap().unwrap();
+                let f = i.read_field().unwrap().unwrap();
                 assert_eq!(f.tag(), 1);
                 assert_eq!(f.read::<String>().unwrap(), "zomg");
             }
@@ -309,7 +322,7 @@ mod test {
     pub fn test_reading_single_byte_usize() {
         with_input_stream(b"\x00\x08", |i| {
             {
-                let mut f = i.read_field().unwrap().unwrap();
+                let f = i.read_field().unwrap().unwrap();
                 assert_eq!(f.tag(), 0);
                 assert_eq!(f.read::<u64>().unwrap(), 8);
             }
@@ -322,7 +335,7 @@ mod test {
     pub fn test_reading_multi_byte_usize() {
         with_input_stream(b"\x00\x92\x0C", |i| {
             {
-                let mut f = i.read_field().unwrap().unwrap();
+                let f = i.read_field().unwrap().unwrap();
                 assert_eq!(f.tag(), 0);
                 assert_eq!(f.read::<u64>().unwrap(), 1554);
             }
@@ -335,19 +348,19 @@ mod test {
     pub fn test_reading_sequential_fields() {
         with_input_stream(b"\x00\x08\x0A\x04zomg\x12\x03lol", |i| {
             {
-                let mut f = i.read_field().unwrap().unwrap();
+                let f = i.read_field().unwrap().unwrap();
                 assert_eq!(f.tag(), 0);
                 assert_eq!(f.read::<u64>().unwrap(), 8);
             }
 
             {
-                let mut f = i.read_field().unwrap().unwrap();
+                let f = i.read_field().unwrap().unwrap();
                 assert_eq!(f.tag(), 1);
                 assert_eq!(f.read::<String>().unwrap(), "zomg");
             }
 
             {
-                let mut f = i.read_field().unwrap().unwrap();
+                let f = i.read_field().unwrap().unwrap();
                 assert_eq!(f.tag(), 2);
                 assert_eq!(f.read::<String>().unwrap(), "lol");
             }
@@ -362,7 +375,7 @@ mod test {
             i.read_field().unwrap().unwrap().skip().unwrap();
 
             {
-                let mut f = i.read_field().unwrap().unwrap();
+                let f = i.read_field().unwrap().unwrap();
                 assert_eq!(f.tag(), 1);
                 assert_eq!(f.read::<String>().unwrap(), "zomg");
             }
@@ -377,7 +390,7 @@ mod test {
     pub fn test_reading_multi_byte_tag_field() {
         with_input_stream(b"\x92\x01\x04zomg", |i| {
             {
-                let mut f = i.read_field().unwrap().unwrap();
+                let f = i.read_field().unwrap().unwrap();
                 assert_eq!(f.tag(), 18);
                 assert_eq!(f.read::<String>().unwrap(), "zomg");
             }
@@ -387,22 +400,10 @@ mod test {
     }
 
     #[test]
-    pub fn test_reading_twice_from_field() {
-        with_input_stream(b"\x92\x01\x04zomg\x92\x01\x04zomg", |i| {
-            {
-                let mut f = i.read_field().unwrap().unwrap();
-                f.read::<String>().unwrap();
-
-                assert!(f.read::<String>().is_err());
-            }
-        });
-    }
-
-    #[test]
     pub fn test_reading_incorrect_type_from_field() {
         with_input_stream(b"\x92\x01\x04zomg", |i| {
             {
-                let mut f = i.read_field().unwrap().unwrap();
+                let f = i.read_field().unwrap().unwrap();
                 assert!(f.read::<u64>().is_err());
             }
         });
@@ -411,7 +412,7 @@ mod test {
     #[test]
     pub fn test_reading_packed_varints() {
         with_input_stream(b"\x22\x06\x03\x8e\x02\x9e\xa7\x05", |i| {
-            let mut f = i.read_field().unwrap().unwrap();
+            let f = i.read_field().unwrap().unwrap();
             assert_eq!(f.tag(), 4);
 
             let nums: Vec<u64> = f.read_packed().unwrap().map(Result::unwrap).collect();

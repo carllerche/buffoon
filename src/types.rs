@@ -42,7 +42,7 @@ impl Deserialize for Vec<u8> {
         unimplemented!();
     }
 
-    fn deserialize_nested<R: io::Read>(field: &mut Field<R>) -> io::Result<Vec<u8>> {
+    fn deserialize_nested<R: io::Read>(field: Field<R>) -> io::Result<Vec<u8>> {
         field.read_bytes()
     }
 }
@@ -72,11 +72,31 @@ impl Deserialize for String {
         unimplemented!();
     }
 
-    fn deserialize_nested<R: io::Read>(field: &mut Field<R>) -> io::Result<String> {
+    fn deserialize_nested<R: io::Read>(field: Field<R>) -> io::Result<String> {
         match String::from_utf8(try!(field.read_bytes())) {
             Ok(s) => Ok(s),
             Err(_) => Err(unexpected_output("string not UTF-8 encoded"))
         }
+    }
+}
+
+impl Serialize for bool {
+    fn serialize<O: OutputStream>(&self, _: &mut O) -> io::Result<()> {
+        unimplemented!();
+    }
+
+    fn serialize_nested<O: OutputStream>(&self, field: u32, out: &mut O) -> io::Result<()> {
+        (if *self { 1u32 } else { 0u32 }).serialize_nested(field, out)
+    }
+}
+
+impl Deserialize for bool {
+    fn deserialize<R: io::Read>(_: &mut InputStream<R>) -> io::Result<Self> {
+        unimplemented!();
+    }
+
+    fn deserialize_nested<R: io::Read>(field: Field<R>) -> io::Result<Self> {
+        u32::deserialize_nested(field).map(|v| v != 0)
     }
 }
 
@@ -125,7 +145,7 @@ impl<T1, T2> Deserialize for (T1, T2)
         let mut a = None;
         let mut b = None;
 
-        while let Some(mut f) = try!(i.read_field()) {
+        while let Some(f) = try!(i.read_field()) {
             match f.tag() {
                 1 => a = Some(try!(f.read())),
                 2 => b = Some(try!(f.read())),
@@ -175,7 +195,7 @@ macro_rules! impl_unsigned {
                 }
             }
 
-            fn deserialize_nested<R: io::Read>(field: &mut Field<R>) -> io::Result<Self> {
+            fn deserialize_nested<R: io::Read>(field: Field<R>) -> io::Result<Self> {
                 field.read_varint()
             }
         }

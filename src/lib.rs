@@ -28,6 +28,7 @@ mod input_stream;
 mod output_stream;
 mod output_writer;
 mod serializer;
+mod take;
 mod types;
 mod wire_type;
 
@@ -83,7 +84,7 @@ pub trait Deserialize : Sized {
     /// Deserialize the value
     fn deserialize<R: Read>(input: &mut InputStream<R>) -> io::Result<Self>;
 
-    fn deserialize_nested<R: Read>(field: &mut Field<R>) -> io::Result<Self> {
+    fn deserialize_nested<R: Read>(field: Field<R>) -> io::Result<Self> {
         field.read_nested()
     }
 }
