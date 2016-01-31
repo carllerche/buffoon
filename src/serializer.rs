@@ -55,14 +55,10 @@ impl Serializer {
 
         trace!("----> serialized nested; size={}; pos={}", nested_size, position);
 
-        if nested_size > 0 {
-            self.nested[position] = nested_size;
+        self.nested[position] = nested_size;
 
-            try!(write_head(self, field, WireType::LengthDelimited));
-            try!(self.write_raw_varint(nested_size));
-        } else {
-            self.nested.truncate(position + 1);
-        }
+        try!(write_head(self, field, WireType::LengthDelimited));
+        try!(self.write_raw_varint(nested_size));
 
         Ok(())
     }

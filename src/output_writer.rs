@@ -36,12 +36,12 @@ impl<'a, W: Write> OutputStream for OutputWriter<'a, W> {
 
         trace!("  -> size={:?}; curr={:?}", size, self.curr);
 
-        if size > 0 {
-            try!(write_head(self, field, WireType::LengthDelimited));
-            try!(self.write_raw_varint(size));
+        try!(write_head(self, field, WireType::LengthDelimited));
+        try!(self.write_raw_varint(size));
 
+        if size > 0 {
             try!(val.serialize(self));
-        };
+        }
 
         Ok(())
     }

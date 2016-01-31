@@ -32,6 +32,7 @@ impl Deserialize for Root {
 
         while let Some(f) = try!(i.read_field()) {
             match f.tag() {
+                1 => try!(f.skip()),
                 2 => foo = Some(try!(f.read())),
                 _ => panic!("unexpected field; field={:?}", f.tag()),
             }
